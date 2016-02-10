@@ -234,7 +234,7 @@
     }
 
     window.onload = function() {
-        loadImg('lena.jpg', imgLoaded);
+        loadImg('demo.png', imgLoaded);
     };
 
 })(window);
