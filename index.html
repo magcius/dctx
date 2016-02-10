@@ -7,7 +7,9 @@
   <body>
     <center>
       <canvas></canvas><br>
-      <input type=range min=1 max=255 value=1 style="width: 500px">
+      <input type=range min=1 max=10 value=1 step=.1 style="width: 500px" id=divisorinput>
+      <p>Divisor: <span id=divisordisp>1</span></p>
+      <p>Show coeffs: <input type=checkbox id=showcoeffs></p>
     </center>
     <script src="demo.js"></script>
   </body>
