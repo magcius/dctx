@@ -13,6 +13,20 @@
 
     var TAU = Math.PI * 2;
 
+    var DEZIGZAG = [
+         0,  1,  8, 16,  9,  2,  3, 10,
+        17, 24, 32, 25, 18, 11,  4,  5,
+        12, 19, 26, 33, 40, 48, 41, 34,
+        27, 20, 13,  6,  7, 14, 21, 28,
+        35, 42, 49, 56, 57, 50, 43, 36,
+        29, 22, 15, 23, 30, 37, 44, 51,
+        58, 59, 52, 45, 38, 31, 39, 46,
+    	53, 60, 61, 54, 47, 55, 62, 63,
+    ];
+    var ZIGZAG = new Array(DEZIGZAG.length);
+    for (var i = 0; i < ZIGZAG.length; i++)
+        ZIGZAG[DEZIGZAG[i]] = i;
+
     function dct(pixels, coeffs) {
         var N = 8;
         var tmp = new Float32Array(8);
@@ -50,7 +64,11 @@
             dct_1d(coeffs, coeffs, i, N);
     }
 
-    function idct(pixels, coeffs, divisor) {
+    function quantize(n, divisor) {
+        return ((n / divisor) | 0) * divisor;
+    }
+
+    function idct(pixels, coeffs, divisor, coeffLimit) {
         var x, y;
         var N = 8;
 
@@ -70,6 +88,10 @@
                         if (kx == 0 && ky == 0)
                             continue;
 
+                        var coefIdx = ky*N+kx;
+                        if (ZIGZAG[coefIdx] >= coeffLimit)
+                            break;
+
                         // The DCT-II requires that our basis functions are
                         // increase in frequency in quarter-length increments.
                         var freqX = (kx * TAU * (1/4));
@@ -79,8 +101,8 @@
                         var harmonicX = Math.cos((2*x+1) / N * freqX);
                         var harmonicY = Math.cos((2*y+1) / N * freqY);
 
-                        var coef = coeffs[ky*N+kx];
-                        coef = coef / divisor;
+                        var coef = coeffs[coefIdx];
+                        coef = quantize(coef, divisor);
                         var weightedHarmonic = coef * harmonicX * harmonicY;
 
                         // XXX -- figure out what this is here for; seems arbitrary,
@@ -122,8 +144,10 @@
         }
         return blocks;
     }
-    function blocksToImgData(imgData, blocks, divisor) {
+    function blocksToImgData(imgData, blocks, divisor, coeffLimit) {
         if (!divisor) divisor = 1;
+        if (!coeffLimit) coeffLimit = 64;
+
         var nBlocksPerRow = (imgData.width / BLOCK_SIZE) | 0;
         blocks.forEach(function(block, i) {
             var by = ((i / nBlocksPerRow) | 0) * BLOCK_SIZE;
@@ -134,9 +158,13 @@
                 for (var x = 0; x < BLOCK_SIZE; x++) {
                     var blockOff = y*BLOCK_SIZE+x;
                     var imgOff = y*imgData.width+x;
-                    imgData.data[(imgBoff+imgOff)*4+0] = block[blockOff] / divisor;
-                    imgData.data[(imgBoff+imgOff)*4+1] = block[blockOff] / divisor;
-                    imgData.data[(imgBoff+imgOff)*4+2] = block[blockOff] / divisor;
+                    var data = block[blockOff];
+                    data = quantize(data, divisor);
+                    if (ZIGZAG[blockOff] >= coeffLimit)
+                        data = 0;
+                    imgData.data[(imgBoff+imgOff)*4+0] = data;
+                    imgData.data[(imgBoff+imgOff)*4+1] = data;
+                    imgData.data[(imgBoff+imgOff)*4+2] = data;
                     imgData.data[(imgBoff+imgOff)*4+3] = 0xFF;
                 }
             }
@@ -165,14 +193,14 @@
 
         var currDivisor = 1;
         var showCoeffs = false;
+        var currCoeffLimit = 64;
 
         function redisplay() {
             if (showCoeffs) {
-                blocksToImgData(imgData, coeffBlocks, currDivisor);
+                blocksToImgData(imgData, coeffBlocks, currDivisor, currCoeffLimit);
             } else {
-                for (var i = 0; i < pixelBlocks.length; i++) {
-                    idct(pixelBlocks[i], coeffBlocks[i], currDivisor);
-                }
+                for (var i = 0; i < pixelBlocks.length; i++)
+                    idct(pixelBlocks[i], coeffBlocks[i], currDivisor, currCoeffLimit);
                 blocksToImgData(imgData, pixelBlocks);
             }
             ctx.putImageData(imgData, 0, 0);
@@ -180,13 +208,22 @@
 
         imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-        var slider = document.querySelector('#divisorinput');
-        slider.value = currDivisor;
-        slider.oninput = function() {
-            document.querySelector('#divisordisp').textContent = slider.value;
+        var divisorslider = document.querySelector('#divisorinput');
+        divisorslider.value = currDivisor;
+        divisorslider.oninput = function() {
+            document.querySelector('#divisordisp').textContent = this.value;
         };
-        slider.onchange = function() {
-            currDivisor = slider.value;
+        divisorslider.onchange = function() {
+            currDivisor = this.value;
+            redisplay();
+        };
+        var coefflimitslider = document.querySelector('#coefflimitinput');
+        coefflimitslider.value = currCoeffLimit;
+        coefflimitslider.oninput = function() {
+            document.querySelector('#coefflimitdisp').textContent = this.value;
+        };
+        coefflimitslider.onchange = function() {
+            currCoeffLimit = this.value;
             redisplay();
         };
         document.querySelector('#showcoeffs').onchange = function() {
